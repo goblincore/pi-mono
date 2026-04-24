@@ -165,6 +165,13 @@ export interface AgentSessionConfig {
 	extensionRunnerRef?: { current?: ExtensionRunner };
 	/** Session start event metadata emitted when extensions bind to this runtime. */
 	sessionStartEvent?: SessionStartEvent;
+	/**
+	 * Model used for auto-compaction summaries. Defaults to the main model.
+	 * Routing compaction through a fast model (e.g. zai/glm-5.1) avoids long
+	 * summarization stalls when the main model is local. Always runs with
+	 * thinking=off.
+	 */
+	compactionModel?: Model<any>;
 }
 
 export interface ExtensionBindings {
@@ -294,6 +301,11 @@ export class AgentSession {
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
 
+	// Optional override model used only for auto-compaction summaries.
+	// When set, compact() routes summarization through this model with
+	// thinking=off instead of using the main model.
+	private _compactionModel?: Model<any>;
+
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
@@ -318,6 +330,7 @@ export class AgentSession {
 		this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
 		this._baseToolsOverride = config.baseToolsOverride;
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
+		this._compactionModel = config.compactionModel;
 
 		// Always subscribe to agent events for internal handling
 		// (session persistence, extensions, auto-compaction, retry logic)
@@ -1613,7 +1626,12 @@ export class AgentSession {
 				throw new Error("No model selected");
 			}
 
-			const { apiKey, headers } = await this._getRequiredRequestAuth(this.model);
+			// Compaction can be routed through a different (typically fast) model.
+			// When _compactionModel is set, summarization uses it with thinking=off
+			// regardless of the main session's thinking level.
+			const compactionModel = this._compactionModel ?? this.model;
+			const compactionThinking: ThinkingLevel = this._compactionModel ? "off" : this.thinkingLevel;
+			const { apiKey, headers } = await this._getRequiredRequestAuth(compactionModel);
 
 			const pathEntries = this.sessionManager.getBranch();
 			const settings = this.settingsManager.getCompactionSettings();
@@ -1665,12 +1683,12 @@ export class AgentSession {
 				// Generate compaction result
 				const result = await compact(
 					preparation,
-					this.model,
+					compactionModel,
 					apiKey,
 					headers,
 					customInstructions,
 					this._compactionAbortController.signal,
-					this.thinkingLevel,
+					compactionThinking,
 				);
 				summary = result.summary;
 				firstKeptEntryId = result.firstKeptEntryId;
@@ -1859,7 +1877,10 @@ export class AgentSession {
 				return;
 			}
 
-			const authResult = await this._modelRegistry.getApiKeyAndHeaders(this.model);
+			// Route auto-compaction through _compactionModel if set (with thinking=off).
+			const compactionModel = this._compactionModel ?? this.model;
+			const compactionThinking: ThinkingLevel = this._compactionModel ? "off" : this.thinkingLevel;
+			const authResult = await this._modelRegistry.getApiKeyAndHeaders(compactionModel);
 			if (!authResult.ok || !authResult.apiKey) {
 				this._emit({
 					type: "compaction_end",
@@ -1930,12 +1951,12 @@ export class AgentSession {
 				// Generate compaction result
 				const compactResult = await compact(
 					preparation,
-					this.model,
+					compactionModel,
 					apiKey,
 					headers,
 					undefined,
 					this._autoCompactionAbortController.signal,
-					this.thinkingLevel,
+					compactionThinking,
 				);
 				summary = compactResult.summary;
 				firstKeptEntryId = compactResult.firstKeptEntryId;

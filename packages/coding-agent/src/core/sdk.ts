@@ -42,6 +42,13 @@ export interface CreateAgentSessionOptions {
 
 	/** Model to use. Default: from settings, else first available */
 	model?: Model<any>;
+	/**
+	 * Model used for auto-compaction summaries. Defaults to the main model.
+	 * Useful when the main model is a slow local model — routing compaction
+	 * through a fast cloud model avoids long summarization stalls. Always
+	 * runs with thinking=off.
+	 */
+	compactionModel?: Model<any>;
 	/** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
 	thinkingLevel?: ThinkingLevel;
 	/** Models available for cycling (Ctrl+P in interactive mode) */
@@ -382,6 +389,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		allowedToolNames,
 		extensionRunnerRef,
 		sessionStartEvent: options.sessionStartEvent,
+		compactionModel: options.compactionModel,
 	});
 	const extensionsResult = resourceLoader.getExtensions();
 

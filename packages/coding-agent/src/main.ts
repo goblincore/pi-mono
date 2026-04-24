@@ -351,6 +351,24 @@ function buildSessionOptions(
 		options.thinkingLevel = parsed.thinking;
 	}
 
+	// Compaction model (optional override routed only through auto-compact summaries).
+	if (parsed.compactionModel) {
+		const resolved = resolveCliModel({
+			cliProvider: undefined,
+			cliModel: parsed.compactionModel,
+			modelRegistry,
+		});
+		if (resolved.warning) {
+			diagnostics.push({ type: "warning", message: `--compaction-model: ${resolved.warning}` });
+		}
+		if (resolved.error) {
+			diagnostics.push({ type: "error", message: `--compaction-model: ${resolved.error}` });
+		}
+		if (resolved.model) {
+			options.compactionModel = resolved.model;
+		}
+	}
+
 	// Scoped models for Ctrl+P cycling
 	// Keep thinking level undefined when not explicitly set in the model pattern.
 	// Undefined means "inherit current session thinking level" during cycling.
@@ -582,6 +600,7 @@ export async function main(args: string[], options?: MainOptions) {
 			sessionManager,
 			sessionStartEvent,
 			model: sessionOptions.model,
+			compactionModel: sessionOptions.compactionModel,
 			thinkingLevel: sessionOptions.thinkingLevel,
 			scopedModels: sessionOptions.scopedModels,
 			tools: sessionOptions.tools,
