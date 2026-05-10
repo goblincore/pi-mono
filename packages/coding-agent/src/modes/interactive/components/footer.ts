@@ -140,8 +140,11 @@ export class FooterComponent implements Component {
 
 		let statsLeft = statsParts.join(" ");
 
-		// Add model name on the right side, plus thinking level if model supports it
-		const modelName = state.model?.id || "no-model";
+		// Add model name on the right side, plus thinking level if model supports it.
+		// Prefer the registered display name (e.g. for local llama.cpp models where
+		// the id is a short alias and the human-readable name carries the actual
+		// model identity); fall back to id for everything else.
+		const modelName = state.model?.name || state.model?.id || "no-model";
 
 		let statsLeftWidth = visibleWidth(statsLeft);
 
